@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Black-Start Restoration — RL Training Visualiser</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #c9d1d9; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --yellow: #d29922; --orange: #db6d28;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header .badge { background: var(--accent); color: #000; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+  .container { display: grid; grid-template-columns: 320px 1fr 280px; gap: 12px; padding: 12px; height: calc(100vh - 54px); }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-y: auto; }
+  .panel h2 { font-size: 14px; color: var(--accent); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #network-canvas { width: 100%; height: 100%; }
+  .metric { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .metric .label { font-size: 12px; color: #8b949e; }
+  .metric .value { font-size: 14px; font-weight: 600; font-family: 'Consolas', monospace; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .controls button { background: var(--border); color: var(--text); border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .controls button:hover { background: var(--accent); color: #000; }
+  .controls button.active { background: var(--accent); color: #000; }
+  #step-slider { width: 100%; margin: 8px 0; }
+  .log-entry { font-family: monospace; font-size: 11px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .log-entry .step-num { color: var(--accent); }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .status-dot.on { background: var(--green); }
+  .status-dot.off { background: var(--red); }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-color { width: 12px; height: 12px; border-radius: 2px; }
+  .load-area { margin-top: 8px; }
+  input[type="file"] { display: none; }
+  .file-label { background: var(--accent); color: #000; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; display: inline-block; }
+  .bar { height: 6px; border-radius: 3px; background: var(--border); margin: 4px 0; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Black-Start Restoration Visualiser</h1>
+  <span class="badge">PI-MADRL</span>
+  <label class="file-label">Load Episode JSON
+    <input type="file" id="file-input" accept=".json">
+  </label>
+  <span id="file-status" style="font-size:12px;color:#8b949e;"></span>
+</header>
+
+<div class="container">
+  <!-- LEFT: Controls + Log -->
+  <div class="panel">
+    <h2>Playback Controls</h2>
+    <div class="controls">
+      <button id="btn-prev">&laquo; Prev</button>
+      <button id="btn-play">&#9654; Play</button>
+      <button id="btn-next">Next &raquo;</button>
+      <button id="btn-reset">Reset</button>
+    </div>
+    <div>
+      <input type="range" id="step-slider" min="0" max="0" value="0">
+      <div style="font-size:12px;color:#8b949e;">Step: <span id="step-display">0</span> / <span id="step-total">0</span></div>
+    </div>
+
+    <h2 style="margin-top:16px;">Action Log</h2>
+    <div id="action-log" style="max-height:300px;overflow-y:auto;"></div>
+
+    <div class="legend" style="margin-top:16px;">
+      <div class="legend-item"><div class="legend-color" style="background:#3fb950;"></div> Energised Bus</div>
+      <div class="legend-item"><div class="legend-color" style="background:#666;"></div> De-energised Bus</div>
+      <div class="legend-item"><div class="legend-color" style="background:#58a6ff;"></div> Generator</div>
+      <div class="legend-item"><div class="legend-color" style="background:#f0883e;"></div> Restored Load</div>
+      <div class="legend-item"><div class="legend-color" style="background:#f85149;"></div> Unrestored Load</div>
+      <div class="legend-item"><div class="legend-color" style="background:#3fb950;width:20px;height:3px;"></div> Closed Line</div>
+      <div class="legend-item"><div class="legend-color" style="background:#444;width:20px;height:1px;"></div> Open Line</div>
+    </div>
+  </div>
+
+  <!-- CENTER: Network Diagram -->
+  <div class="panel" style="padding:0;position:relative;">
+    <svg id="network-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <!-- RIGHT: Metrics -->
+  <div class="panel">
+    <h2>System Metrics</h2>
+    <div class="metric"><span class="label">Load Recovery Ratio</span><span class="value" id="m-lrr">0.0%</span></div>
+    <div class="bar"><div class="bar-fill" id="bar-lrr" style="width:0%;background:var(--green);"></div></div>
+
+    <div class="metric"><span class="label">Buses Energised</span><span class="value" id="m-buses">0 / 0</span></div>
+    <div class="bar"><div class="bar-fill" id="bar-buses" style="width:0%;background:var(--accent);"></div></div>
+
+    <div class="metric"><span class="label">Loads Restored</span><span class="value" id="m-loads">0 / 0</span></div>
+    <div class="bar"><div class="bar-fill" id="bar-loads" style="width:0%;background:var(--orange);"></div></div>
+
+    <div class="metric"><span class="label">Frequency</span><span class="value" id="m-freq">50.00 Hz</span></div>
+    <div class="metric"><span class="label">ESS SoC</span><span class="value" id="m-soc">0.00</span></div>
+    <div class="bar"><div class="bar-fill" id="bar-soc" style="width:0%;background:var(--yellow);"></div></div>
+
+    <div class="metric"><span class="label">Switches Closed</span><span class="value" id="m-sw">0</span></div>
+    <div class="metric"><span class="label">Total Reward</span><span class="value" id="m-reward">0.00</span></div>
+
+    <h2 style="margin-top:20px;">Bus Voltages</h2>
+    <div id="voltage-bars"></div>
+
+    <h2 style="margin-top:20px;">Generator Output</h2>
+    <div id="gen-bars"></div>
+  </div>
+</div>
+
+<script>
+let data = null, currentStep = 0, playing = false, playTimer = null;
+
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('file-status').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    data = JSON.parse(ev.target.result);
+    currentStep = 0;
+    document.getElementById('step-slider').max = data.steps.length - 1;
+    document.getElementById('step-total').textContent = data.steps.length - 1;
+    drawNetwork();
+    renderStep(0);
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('btn-prev').onclick = () => { if (data && currentStep > 0) renderStep(--currentStep); };
+document.getElementById('btn-next').onclick = () => { if (data && currentStep < data.steps.length - 1) renderStep(++currentStep); };
+document.getElementById('btn-reset').onclick = () => { if (data) renderStep(currentStep = 0); };
+document.getElementById('btn-play').onclick = () => {
+  if (playing) { clearInterval(playTimer); playing = false; document.getElementById('btn-play').textContent = '▶ Play'; return; }
+  playing = true; document.getElementById('btn-play').textContent = '⏸ Pause';
+  playTimer = setInterval(() => {
+    if (currentStep >= data.steps.length - 1) { clearInterval(playTimer); playing = false; document.getElementById('btn-play').textContent = '▶ Play'; return; }
+    renderStep(++currentStep);
+  }, 800);
+};
+document.getElementById('step-slider').oninput = (e) => { if (data) renderStep(currentStep = +e.target.value); };
+
+function drawNetwork() {
+  const svg = document.getElementById('network-canvas');
+  const topo = data.topology;
+  const rect = svg.getBoundingClientRect();
+  const W = rect.width || 700, H = rect.height || 500;
+
+  // compute bounding box of bus coords
+  let xs = topo.buses.map(b => b.x), ys = topo.buses.map(b => b.y);
+  let minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  let rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+  const pad = 60;
+  const scale = (b) => ({
+    x: pad + (b.x - minX) / rangeX * (W - 2*pad),
+    y: pad + (b.y - minY) / rangeY * (H - 2*pad)
+  });
+
+  // Store positions
+  topo.buses.forEach(b => { const p = scale(b); b.sx = p.x; b.sy = p.y; });
+  const busMap = {}; topo.buses.forEach(b => busMap[b.id] = b);
+
+  let html = `<defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>`;
+
+  // Lines
+  topo.lines.forEach(l => {
+    const f = busMap[l.from], t = busMap[l.to];
+    if (!f || !t) return;
+    html += `<line id="line-${l.id}" x1="${f.sx}" y1="${f.sy}" x2="${t.sx}" y2="${t.sy}" stroke="#333" stroke-width="2" stroke-dasharray="6,4"/>`;
+  });
+
+  // Buses
+  topo.buses.forEach(b => {
+    html += `<circle id="bus-${b.id}" cx="${b.sx}" cy="${b.sy}" r="14" fill="#333" stroke="#555" stroke-width="2"/>`;
+    html += `<text x="${b.sx}" y="${b.sy + 4}" text-anchor="middle" fill="#aaa" font-size="9" font-weight="bold">${b.id}</text>`;
+  });
+
+  // Gen markers
+  topo.gens.forEach(g => {
+    const b = busMap[g.bus];
+    if (!b) return;
+    html += `<rect id="gen-${g.id}" x="${b.sx - 8}" y="${b.sy - 28}" width="16" height="12" rx="2" fill="#58a6ff" opacity="0.8"/>`;
+    html += `<text x="${b.sx}" y="${b.sy - 20}" text-anchor="middle" fill="#fff" font-size="7">G${g.id}</text>`;
+  });
+
+  // Load markers
+  topo.loads.forEach(l => {
+    const b = busMap[l.bus];
+    if (!b) return;
+    html += `<polygon id="load-${l.id}" points="${b.sx},${b.sy+18} ${b.sx-7},${b.sy+30} ${b.sx+7},${b.sy+30}" fill="#f85149" opacity="0.8"/>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+function renderStep(idx) {
+  if (!data) return;
+  const s = data.steps[idx];
+  const topo = data.topology;
+  document.getElementById('step-slider').value = idx;
+  document.getElementById('step-display').textContent = idx;
+
+  const nBus = topo.buses.length, nLoad = topo.loads.length;
+  const energised = new Set(s.energised_buses || []);
+  const restored = new Set(s.restored_loads || []);
+
+  // Update buses
+  topo.buses.forEach(b => {
+    const el = document.getElementById(`bus-${b.id}`);
+    if (!el) return;
+    const on = energised.has(b.id);
+    el.setAttribute('fill', on ? '#3fb950' : '#333');
+    el.setAttribute('stroke', on ? '#56d364' : '#555');
+    el.setAttribute('filter', on ? 'url(#glow)' : '');
+  });
+
+  // Update lines
+  const sw = s.switch_states || [];
+  topo.lines.forEach((l, i) => {
+    const el = document.getElementById(`line-${l.id}`);
+    if (!el) return;
+    const closed = sw[i];
+    el.setAttribute('stroke', closed ? '#3fb950' : '#333');
+    el.setAttribute('stroke-width', closed ? '3' : '1.5');
+    el.setAttribute('stroke-dasharray', closed ? 'none' : '6,4');
+  });
+
+  // Update loads
+  topo.loads.forEach(l => {
+    const el = document.getElementById(`load-${l.id}`);
+    if (!el) return;
+    el.setAttribute('fill', restored.has(l.id) ? '#f0883e' : '#f85149');
+    el.setAttribute('opacity', restored.has(l.id) ? '1' : '0.4');
+  });
+
+  // Metrics
+  const lrr = s.lrr || 0;
+  document.getElementById('m-lrr').textContent = (lrr * 100).toFixed(1) + '%';
+  document.getElementById('bar-lrr').style.width = (lrr * 100) + '%';
+  document.getElementById('m-buses').textContent = `${energised.size} / ${nBus}`;
+  document.getElementById('bar-buses').style.width = (energised.size / nBus * 100) + '%';
+  document.getElementById('m-loads').textContent = `${restored.size} / ${nLoad}`;
+  document.getElementById('bar-loads').style.width = (restored.size / nLoad * 100) + '%';
+  document.getElementById('m-freq').textContent = (s.frequency || 50).toFixed(2) + ' Hz';
+  document.getElementById('m-soc').textContent = (s.ess_soc || 0).toFixed(3);
+  document.getElementById('bar-soc').style.width = ((s.ess_soc || 0) * 100) + '%';
+  document.getElementById('m-sw').textContent = (sw.filter(v => v).length);
+  document.getElementById('m-reward').textContent = (s.total_reward || 0).toFixed(2);
+
+  // Voltage bars
+  let vhtml = '';
+  if (s.bus_voltages) {
+    s.bus_voltages.forEach((v, i) => {
+      const pct = Math.min(v / 1.15 * 100, 100);
+      const col = (v < 0.9 || v > 1.1) ? 'var(--red)' : 'var(--green)';
+      vhtml += `<div style="display:flex;align-items:center;gap:4px;margin:2px 0;font-size:10px;">
+        <span style="width:24px;text-align:right;">${i}</span>
+        <div class="bar" style="flex:1;height:4px;"><div class="bar-fill" style="width:${pct}%;background:${col};height:100%;"></div></div>
+        <span style="width:36px;">${v.toFixed(3)}</span></div>`;
+    });
+  }
+  document.getElementById('voltage-bars').innerHTML = vhtml;
+
+  // Gen output bars
+  let ghtml = '';
+  if (s.gen_p_mw) {
+    s.gen_p_mw.forEach((p, i) => {
+      const maxP = topo.gens[i] ? topo.gens[i].max_p : 100;
+      const pct = Math.abs(p) / maxP * 100;
+      ghtml += `<div style="display:flex;align-items:center;gap:4px;margin:2px 0;font-size:10px;">
+        <span style="width:36px;">G${i}</span>
+        <div class="bar" style="flex:1;height:4px;"><div class="bar-fill" style="width:${pct}%;background:var(--accent);height:100%;"></div></div>
+        <span style="width:40px;">${p.toFixed(1)}</span></div>`;
+    });
+  }
+  document.getElementById('gen-bars').innerHTML = ghtml;
+
+  // Action log
+  const logEl = document.getElementById('action-log');
+  let logHtml = '';
+  for (let i = 0; i <= Math.min(idx, data.steps.length - 1); i++) {
+    const st = data.steps[i];
+    const a = st.action || {};
+    logHtml += `<div class="log-entry"><span class="step-num">t=${st.step}</span> `;
+    if (a.switch !== undefined && a.switch < topo.lines.length) logHtml += `SW:${a.switch} `;
+    if (a.load !== undefined && a.load < topo.loads.length) logHtml += `LD:${a.load} `;
+    if (a.gens) logHtml += `G:[${a.gens.join(',')}]`;
+    logHtml += `</div>`;
+  }
+  logEl.innerHTML = logHtml;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+</script>
+</body>
+</html>
