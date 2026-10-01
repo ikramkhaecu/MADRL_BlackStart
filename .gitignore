@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+figs/*.png
+sim/results/*.json
+sim/results/*.tex
+sim/results/claims.md
+!sim/results/legacy_v1/
+!sim/results/preliminary_*/

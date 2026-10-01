@@ -1,0 +1,197 @@
+# =============================================================================
+#  PI-MADRL black-start benchmark -- single source of truth for every parameter
+# =============================================================================
+#  Provenance tags (parsed by `python -m sim.config --provenance`):
+#    [paper:<where>]      value stated in the manuscript (Fourth_Manuscript_20_08_2026)
+#    [code-v1:<where>]    value used by the v1 code that produced the submitted results
+#    [code-main:<where>]  value used by the prototype on the `main` branch
+#    [data:<where>]       value read from a public data set
+#    [standard:<where>]   value taken from a standard (VERIFY against the document)
+#    [confirmed:author <date>]  chosen in v2 and explicitly accepted by the author
+#    [PROVISIONAL:<why>]  not stated anywhere -> chosen here; AUTHOR MUST CONFIRM
+# =============================================================================
+
+time:
+  dt_min: 5.0            # [confirmed:author 2026-09-21] [was provisional: v1 drained 3 %SoC/step at rated power = 3.6 min for a 2-h battery; rounded to the 5-min dispatch interval]
+  horizon: 15            # [paper:Table 2 "Episodes T (steps) 15"]
+
+limits:
+  v_soft: [0.95, 1.05]   # [code-v1:powergrid.V_LO,V_HI] operational band -> VVR
+  v_trip: [0.85, 1.15]   # [PROVISIONAL: under/over-voltage protection band -> island collapse]
+  df_soft_hz: 0.5        # [code-v1:powergrid.f_thr=0.010 pu][paper:Fig. 5f "+-0.5 Hz limit"] -> FVR
+  df_trip_hz: 1.5        # [PROVISIONAL: under/over-frequency protection -> island collapse]
+  rocof_soft_hz_s: 1.0   # [paper:L475 "1 Hz/s protection limit"][code-v1:powergrid.ROCOF_LIM] -> FVR
+  rocof_trip_hz_s: 2.0
+  v_mask: [0.90, 1.08]     # [confirmed:author 2026-09-24] raised floor from 0.88 to prevent voltage_protection trips on 118-bus     # [confirmed:author 2026-09-24] tightened to reduce VVR while allowing restoration     # [confirmed:author 2026-09-24] set to trip limits; soft violations are reward-penalised     # [confirmed:author 2026-09-23] widened to allow more load pickup; the reward penalises soft violations widened from [0.92,1.08]: mask/shield threshold between soft (0.95) and trip (0.85); soft violations are penalised in the reward, not blocked]
+  df_mask_hz: 1.2          # [confirmed:author 2026-09-24] tightened for safety          # [confirmed:author 2026-09-24] set to trip limit          # [confirmed:author 2026-09-23]: mask/shield frequency threshold between soft (0.5 Hz) and trip (1.5 Hz)]   # [PROVISIONAL: RoCoF relay trip -> island collapse]
+  line_loading_soft: 1.0 # [paper:Eq. 22]
+  i_cont_pu: 1.0         # [paper:L226 "1.0-1.2 pu of rated current"] continuous converter rating
+  i_max_pu: 1.2          # [paper:L226] short-time converter current limit
+  sync_df_hz: 0.1        # [standard:IEEE 1547-2018 Table 5, DER > 1500 kVA; reproduced in Fix et al., ISGT 2023, Table II]
+  sync_dv_pu: 0.03       # [standard:IEEE 1547-2018 Table 5, DER > 1500 kVA; reproduced in Fix et al., ISGT 2023, Table II]
+  sync_dtheta_deg: 10.0  # [standard:IEEE 1547-2018 Table 5, DER > 1500 kVA; reproduced in Fix et al., ISGT 2023, Table II]
+
+gfm:
+  f_nom_hz: 50.0         # [code-v1:powergrid.F_NOM]
+  droop_p: 0.03          # [paper:L221 "3%"] P-f droop m_p (pu freq / pu power on unit MVA)
+  droop_q: 0.04          # [paper:L221 "4%"] Q-V droop n_q (pu volt / pu var on unit MVA)
+  v0_pu: 1.03            # [confirmed:author 2026-09-24] raised for 118-bus voltage support            # [confirmed:author 2026-09-24] balanced for VVR control            # [confirmed:author 2026-09-24] raised for large systems with remote buses            # [confirmed:author 2026-09-23] raised from 1.0 to support voltage at remote buses (standard GFM practice)
+  h_s: 3.5               # [code-v1:powergrid.h_gfm] virtual inertia constant of every GFM unit (s, unit MVA base)
+  d_pu: 1.0              # [code-v1:powergrid.SYSTEMS.D] VSM damping (pu power / pu freq, unit MVA base)
+  t_lpf_s: 0.10          # [PROVISIONAL: droop power-measurement filter; makes the response 2nd order (nadir below settling value)]
+  pf_rated: 0.9          # [PROVISIONAL: S_rated = P_rated / 0.9; v1 had no MVA rating]
+  reserve_frac: 0.05     # [confirmed:author 2026-09-23] reduced from 0.10; more active power for load pickup
+
+ess:
+  eta_c: 0.95            # [code-main:ESSState.eta]
+  eta_d: 0.95            # [code-main:ESSState.eta]
+  duration_h: 2.0        # [PROVISIONAL: Table 2 gives MWh only; P_max = E / duration]
+  soc_normal: [0.3, 0.7] # [paper:L203]
+  soc_critical: [0.1, 0.9]   # [paper:L203] outside -> pre-stop zone (only charge / only discharge)
+  soc_init: [0.5, 0.7]   # [PROVISIONAL: v1 used 0.6 fixed]
+
+fill:                    # multi-load greedy fill per step (Si et al., Appl. Energy 2024, Eq. 14)
+  budget_frac_single: 0.5  # [confirmed:author 2026-09-24] fraction of Delta P^adm usable in one step, <= 2 islands
+  budget_frac_multi: 0.3   # [confirmed:author 2026-09-24] more conservative when the network is split
+  margin_f_hz: 0.68        # [confirmed:author 2026-09-24] frequency headroom kept by the shield during fill. 0.95*(df_mask - margin_f) = 0.494 Hz < df_soft = 0.5 Hz, so an accepted block cannot by itself create a soft-band violation (at 0.65 the shield admitted up to 0.5225 Hz, i.e. ~1 % FVR by construction)
+  margin_v_pu: 0.03        # [confirmed:author 2026-09-24] voltage headroom kept by the shield during fill
+  max_rounds: 40           # [PROVISIONAL: cap on fill iterations per step]
+  retry_frac: 0.5          # [confirmed:author 2026-09-24] failed loads are retried at half the block
+
+demo:                    # demonstration seeding (Du & Wu, IEEE TSTE 13(2):1062-1072, 2022)
+  enabled: true          # [confirmed:author 2026-09-23] actor pre-trained on greedy trajectories
+  n_episodes: 30         # [PROVISIONAL: min(30, max(episodes//10, 10))]
+  bc_epochs: 5           # [PROVISIONAL: behaviour-cloning epochs before RL]
+
+load:
+  pickup: partial        # [confirmed:author 2026-09-21] [was provisional: partial|binary. binary = paper Eq. 6; partial lets feeders be picked up in admissible blocks]
+  block_interval_s: 10.0 # [confirmed:author 2026-09-21] [was provisional: with the governor a feeder is energised in successive blocks, each inside the RoCoF/nadir limit, one block per interval (settling ~3 s); steady-state limits bound the step total]
+  min_pickup_frac: 0.004 # [PROVISIONAL: smallest block (fraction of system load) the load agent can pick up]
+  power_factor_q: data   # [data:case files] Q follows the case data
+  priority_levels: [1.0, 2.0, 3.0]   # [code-main:blackstart_env "rng.choice([1,2,3])"]
+  priority_seed: 42      # [code-main:blackstart_env RandomState(42)]
+  clpu_enabled: true     # [PROVISIONAL: cold-load pick-up not in v1]
+  clpu_k: 1.15            # [confirmed:author 2026-09-24] reduced from 1.5; GFM voltage regulation limits the actual inrush            # [PROVISIONAL: initial demand multiplier after a long outage]
+  clpu_tau_min: 20.0     # [PROVISIONAL: exponential decay time constant]
+
+transformer:
+  switchable: true       # [confirmed:author 2026-09-21] [was provisional: v1 had no switching; main branch switched lines only, leaving 9/14 buses unreachable]
+  taps_nominal: true     # [PROVISIONAL: OLTCs at nominal position for energisation; case14 taps 0.93-0.98 give 1.07 pu on an unloaded LV side]
+  inrush_pu: 6.0         # [standard:Sawant et al., NREL/CP-5D00-83947, Sec. III -- transformer inrush 6-8 pu without soft start] hard energisation allowed only if S_T * inrush <= i_max * S_online
+
+ratings:
+  surrogate_factor: 3.0            # [confirmed:author 2026-09-24] raised from 1.5  # [PROVISIONAL: cases with placeholder ratings (case14: 9900 MVA) get rating = factor x base-case flow]
+  surrogate_min_mva: 175.0       # [confirmed:author 2026-09-24] raised from 20; prevents single-line bottlenecks on 118-bus   # [PROVISIONAL]
+
+scenario:                # nominal training / test distribution
+  load_scale: [0.7, 1.0] # [code-main:blackstart_env "uniform(0.7, 1.0)"] applied PER LOAD (v1 had no randomness)
+  pv_cf: [0.5, 0.9]      # [PROVISIONAL: available PV power as fraction of rating]
+  wp_cf: [0.4, 0.9]      # [PROVISIONAL: available wind power as fraction of rating]
+  cf_walk_std: 0.03      # [PROVISIONAL: per-step random walk of availability]
+  blackstart: ess_only   # [paper:Table 4 S2][code-main] ess_only | all
+  train_seed_base: 0
+  val_seed_base: 500000
+  test_seed_base: 900000
+
+reward:                  # paper Eq. 20-26 (+ SoC and wasted-action terms of v1)
+  w_rec: 10.0            # [code-v1:BlackStartEnv.w_rec]
+  w_v: 1.0              # [confirmed:author 2026-09-24] increased to reduce VVR              # [confirmed:author 2026-09-23] reduced from 3.0 to encourage restoration over constraint-satisfaction (Si et al. α_r:α_v = 20:1)               # [code-v1:BlackStartEnv.w_v]
+  w_f: 2.0              # [confirmed:author 2026-09-24] restored to the v1 value: at w_f = 0.5 the unmasked baselines reached 5-23 % FVR, i.e. they were buying load recovery with frequency excursions               # [code-v1:BlackStartEnv.w_f]
+  w_line: 1.0            # [PROVISIONAL: Eq. 22 term absent from v1]
+  w_pi: 1.0              # [PROVISIONAL: Eq. 24 term absent from v1]
+  w_soc: 1.0             # [code-v1:BlackStartEnv.w_soc]
+  w_done: 1.0            # [paper:Eq. 25 "+1 / -1"]
+  w_inf: 0.5             # [code-v1:BlackStartEnv.w_inf] wasted (individually impossible) action
+  adequacy_min: 1.10     # [PROVISIONAL: gamma_hat_min in Eq. 24]
+
+pbrs:                    # paper Eq. 33-34
+  gamma: 0.99            # [paper:Table 3]
+  w_l: 5.0               # [code-v1:BlackStartEnv.w_phi]
+  w_n: 1.0               # [PROVISIONAL: bus term of Eq. 34 absent from v1]
+
+dispatch:
+  pv_levels: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]          # [PROVISIONAL: fraction of dispatchable power (1-reserve)*P_avail]
+  wp_levels: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]          # [PROVISIONAL]
+  ess_levels: [-1.0, -0.6, -0.3, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0]   # [PROVISIONAL: fraction of P_max, <0 = charging]
+
+train:                   # paper Table 3 unless stated
+  gamma: 0.99            # [paper:Table 3]
+  gae_lambda: 0.95       # [paper:Table 3]
+  clip: 0.2              # [paper:Table 3]
+  lr_policy: 0.002       # [paper:Table 3 "(1-2)e-3"][code-v1:PPOAgent lr=2e-3]
+  lr_value: 0.001        # [paper:Table 3 "(1-2)e-3"][code-v1:ValueAgent lr=1e-3]
+  hidden: [64, 64]       # [paper:Table 3]
+  dan_env_hidden: [128, 128]   # [paper:L409]
+  dan_int_hidden: 32     # [paper:L410]
+  batch_episodes: 4      # [paper:Table 3]
+  batch_size: 64         # [paper:Table 3]
+  buffer: 20000          # [paper:Table 3]
+  ppo_epochs: 8          # [code-v1:PPOAgent.update epochs=8]
+  ent_start: 0.02        # [code-v1:train_ppo ent=0.02]
+  ent_end: 0.001         # [code-v1:train_ppo floor 1e-3]
+  vf_coef: 0.5           # [code-v1:PPOAgent.update]
+  grad_clip_policy: 0.5  # [code-v1:PPOAgent.update]
+  grad_clip_value: 5.0   # [code-v1:ValueAgent.update]
+  eps_start: 1.0         # [code-v1:ValueAgent.eps]
+  eps_end: 0.05          # [code-v1:train_value]
+  eps_decay_frac: 0.8    # [code-v1:train_value "episodes*0.8"]
+  target_sync_episodes: 10   # [code-v1:train_value]
+  phys_beta_sup: 0.5     # [PROVISIONAL: weight of the supervised physics heads, Eq. 35]
+  phys_beta_res: 0.5     # [PROVISIONAL: weight of the droop-law residual]
+  episodes: 300          # [paper:Table 3] -- see docs/MANUSCRIPT_CHANGES.md: too small for the v2 task
+  seeds: [0, 1, 2]       # [paper:Table 3]
+  probe_every: 20        # [code-v1:README "every 20 episodes"]
+  probe_episodes: 8      # [PROVISIONAL: v1 used 4 probes on the (deterministic) test episode; v2 probes a separate validation set]
+  eval_episodes: 50      # [PROVISIONAL: v1 used 20 identical episodes]
+
+systems:
+  "14":
+    case: case14                   # [code-v1:powergrid.SYSTEMS]
+    base_mva: 100.0                # [data:case14]
+    shunts_in_service: true        # [confirmed:author 2026-09-24] capacitors energise with their bus (standard restoration practice)
+    line_shunt_comp: 0.0
+    load_scale_base: 1.0
+    split_largest_loads: 0
+    n_switch_lines: all            # [paper:Table 2 "15 configurable switches" = the 15 lines]
+    units:                         # ratings [paper:Table 2]; buses [code-main:_build_ieee14_blackstart]
+      - {type: ESS, bus: 0, e_mwh: 150.0}    # [confirmed:author 2026-09-23] raised from 85 for adequacy ~1.10
+      - {type: PV,  bus: 1, p_mw: 100.0}     # [confirmed:author 2026-09-23] raised from 55
+      - {type: WP,  bus: 2, p_mw: 110.0}     # [confirmed:author 2026-09-23] raised from 70
+  "39":
+    case: case39                   # [code-v1:powergrid.SYSTEMS]
+    v0_pu: 1.04                    # [confirmed:author 2026-09-24] higher for 118-bus remote buses
+    horizon: 37                    # [confirmed:author 2026-09-24] 37 x 2 min = 74 min, the same restoration window as the 14-bus (15 x 5 min). Measured: T=45 (90 min) LOWERS greedy LRR 0.776 -> 0.641 at an unchanged bound, because the 2-h ESS fleet is the binding resource over a longer window
+    dt_min: 2.0                    # [confirmed:author 2026-09-21] [was provisional: same 75-min restoration window as the 14-bus (15 x 5 min)]
+    base_mva: 100.0                # [data:case39]
+    shunts_in_service: false
+    line_shunt_comp: 0.70          # [confirmed:author 2026-09-21] [was provisional: line reactors compensate 70 % of the 1036 Mvar of 345-kV charging, otherwise 670 MW of IBR cannot energise the grid]
+    load_scale_base: 0.1656        # [confirmed:author 2026-09-21] 6254 MW -> 1035.7 MW; with the v2.5 unit ratings this gives adequacy 1.125 (the 0.647 of earlier versions no longer applies)
+    split_largest_loads: 7         # [confirmed:author 2026-09-21] [was provisional: case39 has 21 loads; the 7 largest are halved to obtain the 28 of paper Table 2]
+    n_switch_lines: 17             # [paper:Table 2] the 17 (= floor(35/2)) lines with the largest charging [confirmed:author 2026-09-21]
+    units:                         # ratings [paper:Table 2]; buses = original generator buses [confirmed:author 2026-09-21]
+      - {type: ESS, bus: 30, e_mwh: 250.0}
+      - {type: PV,  bus: 30, p_mw: 110.0}
+      - {type: WP,  bus: 31, p_mw: 100.0}
+      - {type: ESS, bus: 32, e_mwh: 200.0}
+      - {type: PV,  bus: 33, p_mw: 110.0}
+      - {type: WP,  bus: 34, p_mw: 100.0}
+      - {type: ESS, bus: 35, e_mwh: 200.0}
+      - {type: PV,  bus: 36, p_mw: 110.0}
+      - {type: WP,  bus: 37, p_mw: 100.0}
+      - {type: PV,  bus: 38, p_mw: 110.0}
+      - {type: WP,  bus: 29, p_mw: 100.0}
+  "118":                           # replaces the IEEE 123-node feeder [confirmed:author 2026-09-21]
+    case: case118                  # [data:pandapower case118 = MATPOWER case118] 118 buses, 173 lines, 13 transformers, 99 loads, 4242 MW
+    v0_pu: 1.04                    # [confirmed:author 2026-09-24] higher for 118-bus remote buses
+    horizon: 37                    # [confirmed:author 2026-09-24] 37 x 2 min = 74 min, the same restoration window as the 14-bus and the 39-bus
+    dt_min: 2.0                    # [confirmed:author 2026-09-21]
+    base_mva: 100.0                # [data:case118]
+    shunts_in_service: true        # [confirmed:author 2026-09-24] the 12 capacitor banks and 2 reactors energise with their bus, as on the 14-bus
+    line_shunt_comp: 0.80          # [confirmed:author 2026-09-24] raised from 0.70 for restoration feasibility; the appendix must read 70 % (39-bus) / 80 % (118-bus), not 70 % for both
+    load_scale_base: 0.3007        # [PROVISIONAL: 4242 MW -> 1275.6 MW; with the v2.5 unit ratings this gives adequacy 1.18. NOTE: adequacy is now 1.10 / 1.125 / 1.18 across the three systems, not constant -- the manuscript appendix must state the three values]
+    split_largest_loads: 0         # [data:case118] 99 loads -- paper Table 2 says 95 -> Table 2 must read 99
+    n_switch_lines: 86             # [PROVISIONAL: same rule as the 39-bus: the floor(173/2) lines with the largest charging (> ~3.1 Mvar) are switched individually; with the paper's 38 the 135 always-closed lines form one 72-bus zone that is live at t = 0]
+    unit_counts: {ESS: 10, PV: 10, WP: 9}      # [paper:Table 2]
+    unit_p_mw: {PV: 50.0, WP: 45.0}     # [confirmed:author 2026-09-23] raised for adequacy ~1.10            # [paper:Table 2] -- fit the 118-bus system without rescaling
+    unit_e_mwh: {ESS: 120.0}            # [confirmed:author 2026-09-23] raised for adequacy ~1.10                    # [paper:Table 2]
+    placement: generator_buses     # [PROVISIONAL rule: the 29 original generator buses with the largest capability (slack first); types ESS, PV, WP cyclic]

@@ -1,0 +1,321 @@
+{
+ "label": "PRELIMINARY sandbox 1 CPU",
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "episodes": 600,
+ "systems": [
+  "14"
+ ],
+ "parts": [
+  "benchmark",
+  "scalability"
+ ],
+ "commit": "816d7fd",
+ "started": "2026-09-23 03:26:50",
+ "config": {
+  "time": {
+   "dt_min": 5.0,
+   "horizon": 15
+  },
+  "limits": {
+   "v_soft": [
+    0.95,
+    1.05
+   ],
+   "v_trip": [
+    0.85,
+    1.15
+   ],
+   "df_soft_hz": 0.5,
+   "df_trip_hz": 1.5,
+   "rocof_soft_hz_s": 1.0,
+   "rocof_trip_hz_s": 2.0,
+   "line_loading_soft": 1.0,
+   "i_cont_pu": 1.0,
+   "i_max_pu": 1.2,
+   "sync_df_hz": 0.1,
+   "sync_dv_pu": 0.03,
+   "sync_dtheta_deg": 10.0
+  },
+  "gfm": {
+   "f_nom_hz": 50.0,
+   "droop_p": 0.03,
+   "droop_q": 0.04,
+   "v0_pu": 1.0,
+   "h_s": 3.5,
+   "d_pu": 1.0,
+   "t_lpf_s": 0.1,
+   "pf_rated": 0.9,
+   "reserve_frac": 0.1
+  },
+  "ess": {
+   "eta_c": 0.95,
+   "eta_d": 0.95,
+   "duration_h": 2.0,
+   "soc_normal": [
+    0.3,
+    0.7
+   ],
+   "soc_critical": [
+    0.1,
+    0.9
+   ],
+   "soc_init": [
+    0.5,
+    0.7
+   ]
+  },
+  "load": {
+   "pickup": "partial",
+   "block_interval_s": 10.0,
+   "min_pickup_frac": 0.004,
+   "power_factor_q": "data",
+   "priority_levels": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "priority_seed": 42,
+   "clpu_enabled": true,
+   "clpu_k": 1.5,
+   "clpu_tau_min": 20.0
+  },
+  "transformer": {
+   "switchable": true,
+   "taps_nominal": true,
+   "inrush_pu": 6.0
+  },
+  "ratings": {
+   "surrogate_factor": 1.5,
+   "surrogate_min_mva": 20.0
+  },
+  "scenario": {
+   "load_scale": [
+    0.7,
+    1.0
+   ],
+   "pv_cf": [
+    0.5,
+    0.9
+   ],
+   "wp_cf": [
+    0.4,
+    0.9
+   ],
+   "cf_walk_std": 0.03,
+   "blackstart": "ess_only",
+   "train_seed_base": 0,
+   "val_seed_base": 500000,
+   "test_seed_base": 900000
+  },
+  "reward": {
+   "w_rec": 10.0,
+   "w_v": 3.0,
+   "w_f": 2.0,
+   "w_line": 1.0,
+   "w_pi": 1.0,
+   "w_soc": 1.0,
+   "w_done": 1.0,
+   "w_inf": 0.5,
+   "adequacy_min": 1.1
+  },
+  "pbrs": {
+   "gamma": 0.99,
+   "w_l": 5.0,
+   "w_n": 1.0
+  },
+  "dispatch": {
+   "pv_levels": [
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0
+   ],
+   "wp_levels": [
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0
+   ],
+   "ess_levels": [
+    -1.0,
+    -0.6,
+    -0.3,
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0
+   ]
+  },
+  "train": {
+   "gamma": 0.99,
+   "gae_lambda": 0.95,
+   "clip": 0.2,
+   "lr_policy": 0.002,
+   "lr_value": 0.001,
+   "hidden": [
+    64,
+    64
+   ],
+   "dan_env_hidden": [
+    128,
+    128
+   ],
+   "dan_int_hidden": 32,
+   "batch_episodes": 4,
+   "batch_size": 64,
+   "buffer": 20000,
+   "ppo_epochs": 8,
+   "ent_start": 0.02,
+   "ent_end": 0.001,
+   "vf_coef": 0.5,
+   "grad_clip_policy": 0.5,
+   "grad_clip_value": 5.0,
+   "eps_start": 1.0,
+   "eps_end": 0.05,
+   "eps_decay_frac": 0.8,
+   "target_sync_episodes": 10,
+   "phys_beta_sup": 0.5,
+   "phys_beta_res": 0.5,
+   "episodes": 300,
+   "seeds": [
+    0,
+    1,
+    2
+   ],
+   "probe_every": 50,
+   "probe_episodes": 8,
+   "eval_episodes": 50
+  },
+  "systems": {
+   "14": {
+    "case": "case14",
+    "base_mva": 100.0,
+    "shunts_in_service": false,
+    "line_shunt_comp": 0.0,
+    "load_scale_base": 1.0,
+    "split_largest_loads": 0,
+    "n_switch_lines": "all",
+    "units": [
+     {
+      "type": "ESS",
+      "bus": 0,
+      "e_mwh": 85.0
+     },
+     {
+      "type": "PV",
+      "bus": 1,
+      "p_mw": 55.0
+     },
+     {
+      "type": "WP",
+      "bus": 2,
+      "p_mw": 70.0
+     }
+    ]
+   },
+   "39": {
+    "case": "case39",
+    "horizon": 30,
+    "dt_min": 2.5,
+    "base_mva": 100.0,
+    "shunts_in_service": false,
+    "line_shunt_comp": 0.7,
+    "load_scale_base": 0.1656,
+    "split_largest_loads": 7,
+    "n_switch_lines": 17,
+    "units": [
+     {
+      "type": "ESS",
+      "bus": 30,
+      "e_mwh": 180.0
+     },
+     {
+      "type": "PV",
+      "bus": 30,
+      "p_mw": 65.0
+     },
+     {
+      "type": "WP",
+      "bus": 31,
+      "p_mw": 55.0
+     },
+     {
+      "type": "ESS",
+      "bus": 32,
+      "e_mwh": 100.0
+     },
+     {
+      "type": "PV",
+      "bus": 33,
+      "p_mw": 65.0
+     },
+     {
+      "type": "WP",
+      "bus": 34,
+      "p_mw": 55.0
+     },
+     {
+      "type": "ESS",
+      "bus": 35,
+      "e_mwh": 100.0
+     },
+     {
+      "type": "PV",
+      "bus": 36,
+      "p_mw": 65.0
+     },
+     {
+      "type": "WP",
+      "bus": 37,
+      "p_mw": 55.0
+     },
+     {
+      "type": "PV",
+      "bus": 38,
+      "p_mw": 65.0
+     },
+     {
+      "type": "WP",
+      "bus": 29,
+      "p_mw": 55.0
+     }
+    ]
+   },
+   "118": {
+    "case": "case118",
+    "horizon": 60,
+    "dt_min": 1.25,
+    "base_mva": 100.0,
+    "shunts_in_service": false,
+    "line_shunt_comp": 0.7,
+    "load_scale_base": 0.3007,
+    "split_largest_loads": 0,
+    "n_switch_lines": 86,
+    "unit_counts": {
+     "ESS": 10,
+     "PV": 10,
+     "WP": 9
+    },
+    "unit_p_mw": {
+     "PV": 30.0,
+     "WP": 25.0
+    },
+    "unit_e_mwh": {
+     "ESS": 60.0
+    },
+    "placement": "generator_buses"
+   }
+  }
+ },
+ "wall_min": 26.95081980228424
+}
